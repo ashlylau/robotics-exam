@@ -57,6 +57,8 @@ def move(left_offset, right_offset):
     BP.set_motor_position(BP.PORT_D, right_target_pos)
 
 def rotate(angle_degeres):
+  if angle_degrees > 180:
+    angle_degrees = 180 - angle_degrees  # set it to turn anticlockwise
   offset = ROTATE_CALIBRATION * angle_degrees
   self.move(offset, -offset)
 
@@ -66,7 +68,17 @@ def translate(distance_cm):
 ```
 
 # servoing
-
+```
+while True:
+  try:
+    distance_cm = BP.get_sensor(BP.PORT_C)
+    error = K * (distance_cm - REQUIRED_DISTANCE_FROM_WALL)
+    BP.set_motor_dps(BP.PORT_A, error)
+    BP.set_motor_dps(BP.PORT_D, error)
+    time.sleep(0.02)
+  except brickpi3.SensorError as error:
+    print(error)
+```
 
 
 # wall following
@@ -90,6 +102,32 @@ except KeyboardInterrupt:
 finally:
   BP.reset_all()
 ```
+
+# waypoint navigation
+```
+NUM_PARTICLES = 100
+particles = [(0, 0, 0) for i in range(NUM_PARTICLES)]
+curr_position_estimate = (0, 0, 0)
+
+def navigate_to_waypoint(x, y):
+  x_diff = x - curr_position_estimate[0]
+  y_diff = y - curr_position_estimate[1]
+  distance = math.sqrt(x_diff**2, y_diff**2)
+  angle_diff = math.degrees(math.atan2(y_diff, x_diff))
+  angle = angle_diff - curr_position_estimate[3]
+
+  # scale it to be 0 < angle < 360
+  if angle > 360:
+    angle = angle - 360
+  if angle < 0:
+    angle = angle + 360
+
+  self.rotate(angle)
+  self.translate(distance)
+
+```
+
+
 
 # occupancy mapping
 
