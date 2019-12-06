@@ -155,11 +155,6 @@ def navigate_to_waypoint(x, y):
 
 ```
 
-
-# occupancy mapping
-
-
-
 # mcl
 ```
 def calculate_likelihood(x, y, theta, z):
@@ -259,3 +254,42 @@ for (x, y) in waypoints_to_navigate:
 
 
 # signature mapping
+```
+def characterise_location():
+  signature = []
+  for angle in range(360):
+    distance = BP.get_sensor(BP.PORT_1)
+    signature.append(distance)
+    rotate_sensor(1)
+  return signature
+
+def compare_signatures(sg1, sg2):
+  diff_squared = []
+  for i in range(360):
+    dist = 0
+    for j in range(360):
+      dist += (sg1[i] - sg2[j])**2
+    diff_squared.append(i, j, dist)
+  diff_squared.sort()  # sort by dist
+  return diff_squared[0]
+
+def recognise_location():
+  signature = characterise_location()
+  least_dist = 10000
+  angle_offset = None
+  location = None
+  for sig in learned_locations:
+    (i, j, diff) = compare_signatures(signature, sig)
+    if diff < least_dist:
+      least_dist = diff
+      angle_offset = i - j
+      location = sig
+    if least_dist > K:
+      # the robot is likely to not be in any of the saved locations
+  return (location, angle_offset)
+
+```
+
+
+
+# occupancy mapping
