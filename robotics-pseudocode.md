@@ -109,6 +109,34 @@ NUM_PARTICLES = 100
 particles = [(0, 0, 0) for i in range(NUM_PARTICLES)]
 curr_position_estimate = (0, 0, 0)
 
+def update_particles(is_translate, point, offset):
+  if is_translate:
+    for i in range(NUM_PARTICLES):
+      new_particle = self.update_translate(point, offset)
+      self.particles[i] = new_particle
+  else:
+    for i in range(NUM_PARTICLES):
+      new_particle = self.update_rotate(point, offset)
+      self.particles[i] = new_particle
+  new_estimate = [0, 0, 0]
+  for i in range(NUM_PARTICLES):
+    new_estimate[0] += self.weights[i] * self.particles[i][0]
+    new_estimate[1] += self.weights[i] * self.particles[i][1]
+    new_estimate[2] += self.weights[i] * self.particles[i][2]
+  self.curr_position_estimate = tuple(new_estimate)
+
+def update_rotate(point, angle_degrees):
+  new_angle = point[2] + angle_degeres + random.gauss(0, g)
+  new_point = (point[0], point[1], new_angle)
+  return new_point
+
+def update_translate(point, distance):
+  new_x = point[0] + (distance + random.gauss(0, e)) * math.cos(point[2])
+  new_y = point[1] + (distance + random.gauss(0, e)) * math.sin(point[2])
+  new_angle = point[2] + random.gauss(0, f)
+  new_point = (new_x, new_y, new_angle)
+  return new_point
+
 def navigate_to_waypoint(x, y):
   x_diff = x - curr_position_estimate[0]
   y_diff = y - curr_position_estimate[1]
@@ -128,14 +156,106 @@ def navigate_to_waypoint(x, y):
 ```
 
 
-
 # occupancy mapping
 
 
 
 # mcl
+```
+def calculate_likelihood(x, y, theta, z):
+  # find out which wall the sonar beam will hit if the robot is at position (x, y, theta)
+  walls_hit = []  # (m, wall)
+  for (ax, ay, bx, by) in walls:
+    numerator = (by - ay)*(ax - x) - (bx - ax)*(ay - y)
+    denominator = (by - ay)*math.cos(theta) - (bx - ax)*math.sin(theta)
+    m = numerator / denominator
+
+    # check if the sonar will hit within limits of the wall
+    x_pos = x + m * math.cos(theta)
+    y_pos = y + m * math.sin(theta)
+
+    if x_pos >= ax and x_pos <= bx:
+      walls_hit.append(m, (ax, ay, bx, by))
+
+  # get closest wall
+  m_dist = 1000  # arbitrarily high value
+  closest_wall = None
+  for (m, wall) in walls_hit:
+    if m < m_dist and m > 0:
+      m_dist = m
+      closest_wall = wall
+
+  # calculate angle of incidence to wall
+  ax = closest_wall[0]
+  ay = closest_wall[1]
+  bx = closest_wall[2]
+  by = closest_wall[3]
+  numerator = math.cos(theta)*(ay - by) + math.sin(bx - ax)
+  denominator = math.sqrt((ay - by)**2 + (bx - ax)**2)
+  beta = math.acos(numerator / denominator)
+  if math.degrees(beta) > 60:
+    # ignore
+
+  K = 0.1
+  std_dev = 2.5
+  likelihood = math.exp((-((z - m)**2) / (2 * std_dev)) + K)
+
+  return (likelihood, beta)
+
+def normalise():
+  weight_sum = sum(self.weights)
+  for i in range(NUM_PARTICLES):
+    self.weights[i] = self.weights[i] / weight_sum
+
+def resample():
+  cum_weights = [0] * NUM_PARTICLES
+  cum_weight = 0
+  for i in range(NUM_PARTICLES):
+    cum_weight += self.weights[i]
+    cum_weights[i] = cum_weight
+  new_particles = [0] * NUM_PARTICLES
+  for i in range(NUM_PARTICLES):
+    rand = random.random()
+    index = self.get_intersection(rand, cum_weights)
+    new_particles[i] = self.particles[index]
+    self.weights[i] = 1 / NUM_PARTICLES
+  self.particels = new_particles
+
+def get_intersection(rand, cum_weights):
+  for i in range(NUM_PARTICLES):
+    if value < cum_weights[i]:
+      return i
 
 
+# putting it all together
+curr_position_estimate = [(84, 30, 0)]
+for (x, y) in waypoints_to_navigate:
+  mover.navigate_to_waypoint(x, y)
+  canvas.drawParticles(mover.particles)
+  got_sensor = False
+  while not got_sensor:
+    try:
+      z = BP.get_sensor(BP.PORT_1)
+      got_sensor = True
+    except brickpi3.SensorError as error:
+      print(error)
+  num_large_beta_values = 0
+  for i in range(NUM_PARTICLES):
+    particle = mover.particles[i]
+    (likelihood, beta) = mover.calculate_likelihood(particle[0], particle[1],
+                                                    particle[2], z)
+    if beta > 60:
+      num_large_beta_values += 1  # ignore the calculated likelihood
+    else:
+      mover.weights[i] = likelihood
+  mover.normalise()
+  if num_large_beta_values < 50:  # only resample if there are a few garbage values
+    mover.resample()
+
+  canvas.drawParticles(mover.particles)
+  mover.update_curr_position_estimate()
+
+```
 
 
 # signature mapping
