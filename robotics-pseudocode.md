@@ -169,8 +169,8 @@ def calculate_likelihood(x, y, theta, z):
     x_pos = x + m * math.cos(theta)
     y_pos = y + m * math.sin(theta)
 
-    if x_pos >= ax and x_pos <= bx:
-      walls_hit.append(m, (ax, ay, bx, by))
+    if not point_lies_on_wall((x, y), (ax, ay), (bx, by)):
+      continue  # continue to next wall
 
   # get closest wall
   m_dist = 1000  # arbitrarily high value
@@ -188,14 +188,21 @@ def calculate_likelihood(x, y, theta, z):
   numerator = math.cos(theta)*(ay - by) + math.sin(bx - ax)
   denominator = math.sqrt((ay - by)**2 + (bx - ax)**2)
   beta = math.acos(numerator / denominator)
-  if math.degrees(beta) > 60:
-    # ignore
 
   K = 0.1
   std_dev = 2.5
-  likelihood = math.exp((-((z - m)**2) / (2 * std_dev)) + K)
+  likelihood = math.exp((-((z - m)**2) / (2 * std_dev**2)) + K)
 
   return (likelihood, beta)
+
+def point_lies_on_wall(p, a, b):
+  ab = distance(a, b)
+  ap = distance(a, p)
+  bp = distance(b, p)
+  return math.abs(ab - ap - bp) < 0.2
+
+def distance(x, y):
+  return math.sqrt((y[0] - x[0])**2 + (y[1] - x[1])**2)
 
 def normalise():
   weight_sum = sum(self.weights)
@@ -293,3 +300,17 @@ def recognise_location():
 
 
 # occupancy mapping
+
+```
+# initialise grid with all zeroes
+
+# make sonar measurement
+
+# find grid boxes which lie within the angle range (15-20deg)
+
+# for boxes with dist < z - sigma -- subtract 2
+
+# for boxes with dist within z +- signma -- add 2
+
+
+```
