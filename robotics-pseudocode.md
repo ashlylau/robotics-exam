@@ -3,33 +3,42 @@
 BP.set_motor_power(BP.PORT_A, power)
 - sets raw power level (-100, 100) which makes motor move without PID control
 
+
 BP.set_motor_power(BP.PORT_A, BP.MOTOR_FLOAT)
 - set motor to 'float' without power --> it can be tuned by hand
 - encoder can still be read --> can interface with the robot by hand tuning
 
+
 BP.get_motor_encoder(BP.PORT_A)
 - returns current encoder position in degrees
+
 
 BP.offset_motor_encoder(BP.PORT_A, BP.get_motor_encoder(BP.PORT_A))
 - resets encoder count to zero
 
+
 BP.set_motor_position(BP.PORT_A, degrees)
 - sets position demand for the motor in degrees, and starts PID control to reach it
+
 
 BP.set_motor_dps(BP.PORT_A, dps)
 - sets velocity demand for the motor in degrees per second, starts PID control to reach it
 
+
 BP.get_motor_status(BP.PORT_A)
 - returns (current status flag, power in percent, encoder position (degrees), current velocity (dps))
+
 
 BP.set_motor_limits(BP.PORT_A, power, dps)
 - sets limits on power and dps that will be used in PID control
 - useful to protect BrickPi from overloading
 - typically < 70% power
 
+
 BP.set_motor_position_kp(BP.PORT_A, kp)
 - set PID proportional gain constant
 - default is 25
+
 
 BP.reset_all()
 
@@ -144,11 +153,11 @@ def navigate_to_waypoint(x, y):
   angle_diff = math.degrees(math.atan2(y_diff, x_diff))
   angle = angle_diff - curr_position_estimate[3]
 
-  # scale it to be 0 < angle < 360
-  if angle > 360:
-    angle = angle - 360
-  if angle < 0:
-    angle = angle + 360
+  # scale it to be -180 < angle < 180
+  if angle < -180:
+    angle += 360
+  if angle > 180:
+    angle -= 360
 
   self.rotate(angle)
   self.translate(distance)
@@ -163,6 +172,8 @@ def calculate_likelihood(x, y, theta, z):
   for (ax, ay, bx, by) in walls:
     numerator = (by - ay)*(ax - x) - (bx - ax)*(ay - y)
     denominator = (by - ay)*math.cos(theta) - (bx - ax)*math.sin(theta)
+    if denominator == 0:
+      continue  # skip this wall
     m = numerator / denominator
 
     # check if the sonar will hit within limits of the wall
@@ -312,5 +323,106 @@ def recognise_location():
 
 # for boxes with dist within z +- signma -- add 2
 
+def update_occupancy_map(x, y, theta, z, alpha):
+  for i in range(500):
+    for j in range(500):
+      x_diff = i - x
+      y_diff = j - y
+      distance = math.sqrt(y_diff**2 + x_diff**2)
+      angle_offset = math.atan2(y_diff, x_diff)
+      angle = angle_offset - theta
+      if angle < -180:
+        angle += 360
+      if angle > 180:
+        angle -= 360
+      if math.abs(angle - alpha) >= 5:
+        continue
+      if math.abs(distance - z) > 4:
+        occupancyMap[i][j] -= 2
+	  if math.abs(distance - z) <= 4:
+		occupancyMap[j][j] += 5
+
 
 ```
+
+# angle of incidence to wall
+ignore reading if beta > 60
+```
+numerator = math.cos(theta)*(ay - by) + math.sin(theta)*(bx - ax)
+denominator = math.sqrt((ay - by)**2 + (bx - ax)**2)
+beta = math.acos(numerator / denominator)
+```
+
+# likelihood function
+```
+K = 0.01
+sigma = 2
+math.exp((-(z - m)**2) / 2 * sigma**2) + K
+```
+
+# m calculation
+```
+numerator = (by - ay)*(ax - x) - (bx - ax)*(ay - y)
+denominator =  (by - ay)*math.cos(theta) - (bx - ax)*math.sin(theta)
+m = numerator / denominator
+```
+
+# PID control
+u(t) = kp*e(t) + ki*integrate(e(T)dT) + kd*(de(t)/dt)
+
+proportional term:
+- e(t) is the difference between expected and actual (ie. the error)
+- high kp results in large change in output power for a given change in error
+- if kp is too high, the system can become unstable and keep overshooting
+- if kp is too low, there will be a small output response to a large input error, resulting in a less responsive controller
+
+integral term:
+- sum of accumulated previous errors
+- this aims to reduce residual steady-state error that occurs from a pure proportional controller
+- however since it accumulates errors, a high ki could cause the present value to overshoot the setpoint value
+
+differential term:
+- power output is proportional to the rate of change in error
+- a high kd reduces settling time and improves stability of the system
+
+
+# SLAM
+Used when the robot is in a location it has never been in  before
+- build a map incrementally
+- localise with respect to that map as it grows and is gradually refined
+
+Features for SLAM
+- estimate 3D position of object in the room (x,y,z)
+- distinctive form each other, easily recognisable from different viewpoints
+
+Propagating uncertainty
+- jointly estimate both probabilities at the same time (environment and robot position)
+- assume that the world is static; only the robot is moving
+- extend to higher dimensions (extend the state vector)
+- don't really use particle filter for SLAM (exponential amount of calculations)
+
+Extended Kalman filter
+- when the robot initialises B and C, they inherit the robot's uncertainty + a little bit more
+- when the robot re-measures A, it closes a loop --> decreases uncertainty of where the robot is + B and C
+
+
+#### SLAM Algorithms
+- Active Vision
+  - measures uncertainty of landmarks + track previous locations
+- Ring of Sensors
+  - make sonar measurements in all directions
+  - estimate landmarks in 2D
+- Single Camera (MonoSLAM)
+  - useful for AR, ARkit, Hololens
+  - infer depth over multiple views (via triangulation)
+- Pure topological map
+  - use place recognition and link them together to find geometric map
+- add metric information to topological map
+  - apply pose graph optimisation (relaxation) algorithm 
+
+Limitations of Metric SLAM
+- poor computational scaling of probabilistic filters (need to update at high frequency)
+- growth in uncertainty at large distances from map origin
+- gaussian function may not be representative of the distribution (when particles rotate --> banana like shape)
+
+local metric mapping to estimate smaller local map --> jigsaw to combine the maps together (using place recognition) --> global optimisation when you find a loop
