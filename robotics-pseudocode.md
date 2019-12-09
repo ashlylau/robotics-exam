@@ -153,7 +153,7 @@ def navigate_to_waypoint(x, y):
   angle_diff = math.degrees(math.atan2(y_diff, x_diff))
   angle = angle_diff - curr_position_estimate[3]
 
-  # scale it to be -180 < angle < 180
+  # scale it to be -180 < angle < 180, so that robot always rotates the lesser angle
   if angle < -180:
     angle += 360
   if angle > 180:
@@ -206,6 +206,7 @@ def calculate_likelihood(x, y, theta, z):
 
   return (likelihood, beta)
 
+# bounding box to allow for floating point errors
 def point_lies_on_wall(p, a, b):
   ab = distance(a, b)
   ap = distance(a, p)
@@ -260,13 +261,30 @@ for (x, y) in waypoints_to_navigate:
     if beta > 60:
       num_large_beta_values += 1  # ignore the calculated likelihood
     else:
-      mover.weights[i] = likelihood
+      mover.weights[i] = likelihood * mover.weights[i]
   mover.normalise()
   if num_large_beta_values < 50:  # only resample if there are a few garbage values
     mover.resample()
 
   canvas.drawParticles(mover.particles)
   mover.update_curr_position_estimate()
+
+
+def update_curr_position_estimate():
+  mean_x = 0
+  mean_y = 0
+  mean_theta = 0
+  for particle in particles:
+    mean_x += particle.x * particle.weight
+    mean_y += particle.y * particle.weight
+    if particle.angle > 180:
+      particle.angle -= 360
+    mean_angle += particle.angle * particle.weight
+  if mean_theta < 0:
+    mean_theta += 360
+  curr_position_estimate[0] = mean_x
+  curr_position_estimate[1] = mean_y
+  curr_position_estimate[2] = mean_theta
 
 ```
 
@@ -335,15 +353,32 @@ def update_occupancy_map(x, y, theta, z, alpha):
         angle += 360
       if angle > 180:
         angle -= 360
+      # take note of angular wrap around (1, 359 is within 5degrees)
       if math.abs(angle - alpha) >= 5:
         continue
-      if math.abs(distance - z) > 4:
+      if distance < z - 4:
         occupancyMap[i][j] -= 2
 	  if math.abs(distance - z) <= 4:
 		occupancyMap[j][j] += 5
-
-
 ```
+
+
+# clip (for threshold values of wheel velocity)
+```
+def clip(n, lo, hi):
+  return max(lo, min(n, hi))
+```
+
+# radius, angle of differential drive
+be able to derive this
+
+
+# endpoints of intersection with wall
+```
+x_coord = m * math.cos(theta)
+Y_coord = m * math.sin(theta)
+```
+
 
 # angle of incidence to wall
 ignore reading if beta > 60
@@ -385,6 +420,18 @@ differential term:
 - power output is proportional to the rate of change in error
 - a high kd reduces settling time and improves stability of the system
 
+```
+previous_error = 0
+integral = 0
+while True:
+  error = expected - actual
+  integral += error * time
+  derivative = (error - previous_error) / time
+  total_error = kp * error + ki * integral + kd * derivative
+  previous_error = error
+  time.sleep(time)
+```
+
 
 # SLAM
 Used when the robot is in a location it has never been in  before
@@ -418,7 +465,7 @@ Extended Kalman filter
 - Pure topological map
   - use place recognition and link them together to find geometric map
 - add metric information to topological map
-  - apply pose graph optimisation (relaxation) algorithm 
+  - apply pose graph optimisation (relaxation) algorithm
 
 Limitations of Metric SLAM
 - poor computational scaling of probabilistic filters (need to update at high frequency)
