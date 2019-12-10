@@ -275,15 +275,15 @@ for (x, y) in waypoints_to_navigate:
 def update_curr_position_estimate():
   mean_x = 0
   mean_y = 0
-  mean_theta = 0
+  mean_sin = 0
+  mean_cos = 0
   for particle in particles:
     mean_x += particle.x * particle.weight
     mean_y += particle.y * particle.weight
-    if particle.angle > 180:
-      particle.angle -= 360
-    mean_angle += particle.angle * particle.weight
-  if mean_theta < 0:
-    mean_theta += 360
+    # to deal with angular wrap around
+    mean_sin += math.sin(particle.theta) * particle.weight
+    mean_cos += math.cos(particle.theta) * particle.weight
+  mean_theta = math.atan2(mean_sin, mean_cos)
   curr_position_estimate[0] = mean_x
   curr_position_estimate[1] = mean_y
   curr_position_estimate[2] = mean_theta
