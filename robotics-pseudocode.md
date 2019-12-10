@@ -146,6 +146,8 @@ def update_translate(point, distance):
   new_point = (new_x, new_y, new_angle)
   return new_point
 
+# note that variance of e, f, g should scale with rotation and distance
+
 def navigate_to_waypoint(x, y):
   x_diff = x - curr_position_estimate[0]
   y_diff = y - curr_position_estimate[1]
@@ -362,7 +364,6 @@ def update_occupancy_map(x, y, theta, z, alpha):
 		occupancyMap[j][j] += 5
 ```
 
-
 # clip (for threshold values of wheel velocity)
 ```
 def clip(n, lo, hi):
@@ -370,7 +371,9 @@ def clip(n, lo, hi):
 ```
 
 # radius, angle of differential drive
-be able to derive this
+R = (W * (vR + vL)) / (2 * (vR - vL))
+
+delta_theta = ((vR - vL) * delta_t) / W
 
 
 # endpoints of intersection with wall
@@ -401,6 +404,31 @@ numerator = (by - ay)*(ax - x) - (bx - ax)*(ay - y)
 denominator =  (by - ay)*math.cos(theta) - (bx - ax)*math.sin(theta)
 m = numerator / denominator
 ```
+
+# circular motion
+```
+x + R * (math.sin(delta_theta + theta) - math.sin(theta))
+y - R * (math.cos(delta_theta + theta) - math.cos(theta))
+theta + delta_theta
+```
+
+# median filtering
+sensor sometimes gives rubbish values --> get 5 measurements and take median
+however this makes the system less responsive
+
+# cascade control
+- output of one control loop is used as the input for the other
+- abstraction hides details of motor/encoder control from sensor control
+- top level controller may request velocity changes too quickly --> exceed bandwidth of lower level controller
+
+# particle filtering
+- cloud of weighted particles represent distribution of robot position
+- simple to implement
+- able to represent more than one peak
+- however, hard to represent detailed shape when there are few particles
+- high number of particles is computationally expensive and hard to scale
+- if initial position is unknown, may need to take multiple movements and measurements to find its right location
+
 
 # PID control
 u(t) = kp*e(t) + ki*integrate(e(T)dT) + kd*(de(t)/dt)
